@@ -7,26 +7,24 @@
 #include <chrono>
 #include <type_traits>
 
-// Helper function to write a single value to CSV
 template <typename T>
 void write_scalar(FILE *file, const T &val)
 {
     if constexpr (std::is_same_v<T, float>)
     {
-        fprintf(file, "%.6f", val); // Print float with precision
+        fprintf(file, "%.6f", val);
     }
-    else if constexpr (std::is_integral_v<T>)
+    else if constexpr (std::is_same_v<T, int8_t> || std::is_same_v<T, int16_t> || std::is_integral_v<T>)
     {
-        fprintf(file, "%d", static_cast<int>(val)); // Print integers
+        fprintf(file, "%d", static_cast<int>(val));
     }
     else
     {
-        std::cerr << "Unsupported input type for writing!\n";
+        fprintf(stderr, "Unsupported input type for writing!\n");
         fprintf(file, "ERR");
     }
 }
 
-// Main CSV writer function
 void write_data_csv(Channel &channel, const std::string &filename)
 {
     try
@@ -41,12 +39,12 @@ void write_data_csv(Channel &channel, const std::string &filename)
         while (true)
         {
             std::shared_ptr<data_part_t> part;
-
-            // Wait for new data or termination condition
             {
                 std::unique_lock<std::mutex> lock(channel.mtx);
                 channel.cond_write_csv.wait(lock, [&]
-                                            { return !channel.data_queue_csv.empty() || channel.acquisition_done || stop_program.load(); });
+                {
+                    return !channel.data_queue_csv.empty() || channel.acquisition_done || stop_program.load();
+                });
 
                 if (stop_program.load() && channel.acquisition_done && channel.data_queue_csv.empty())
                     break;
@@ -62,7 +60,6 @@ void write_data_csv(Channel &channel, const std::string &filename)
                 }
             }
 
-            // Write one sample line
             for (size_t k = 0; k < MODEL_INPUT_DIM_0; k++)
             {
                 write_scalar(buffer_output_file, part->data[k][0]);
@@ -77,12 +74,10 @@ void write_data_csv(Channel &channel, const std::string &filename)
         }
 
         fclose(buffer_output_file);
-        std::cout << "Data writing on CSV thread on channel "
-                  << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
+        std::cout << "Data writing on CSV thread on channel " << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Exception in write_data_csv for channel "
-                  << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
+        std::cerr << "Exception in write_data_csv for channel " << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
     }
 }

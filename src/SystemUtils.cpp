@@ -1,17 +1,15 @@
-/* SystemUtils.cpp */
+/*SystemUtils.cpp*/
 
 #include "SystemUtils.hpp"
 #include "Common.hpp"
 #include <iostream>
+#include <sys/statvfs.h>
 #include <csignal>
 #include <thread>
 #include <iomanip>
 #include <filesystem>
-#include <sys/statvfs.h>
-#include <sched.h>
-#include <unistd.h>
 
-// Check if available disk space is below a given threshold (in bytes)
+// Function to check if disk space is below a certain threshold
 bool is_disk_space_below_threshold(const char *path, double threshold)
 {
     struct statvfs stat;
@@ -25,7 +23,7 @@ bool is_disk_space_below_threshold(const char *path, double threshold)
     return available_space < threshold;
 }
 
-// Set CPU core affinity for the current process
+// Set process affinity to a core
 void set_process_affinity(int core_id)
 {
     cpu_set_t cpuset;
@@ -37,11 +35,11 @@ void set_process_affinity(int core_id)
     }
 }
 
-// Set real-time priority for a thread
 bool set_thread_priority(std::thread &th, int priority)
 {
     struct sched_param param;
     param.sched_priority = priority;
+
     if (pthread_setschedparam(th.native_handle(), SCHED_FIFO, &param) != 0)
     {
         std::cerr << "Failed to set thread priority to " << priority << std::endl;
@@ -50,16 +48,20 @@ bool set_thread_priority(std::thread &th, int priority)
     return true;
 }
 
-// Pin a thread to a specific CPU core
+// Function to set thread affinity to a specific core
 bool set_thread_affinity(std::thread &th, int core_id)
 {
     cpu_set_t cpuset;
     CPU_ZERO(&cpuset);
     CPU_SET(core_id, &cpuset);
-    return pthread_setaffinity_np(th.native_handle(), sizeof(cpu_set_t), &cpuset) == 0;
+    if (pthread_setaffinity_np(th.native_handle(), sizeof(cpu_set_t), &cpuset) != 0)
+    {
+        return false;
+    }
+    return true;
 }
 
-// SIGINT handler to initiate graceful shutdown
+// Signal handler for graceful shutdown
 void signal_handler(int sig)
 {
     if (sig == SIGINT)
@@ -68,18 +70,17 @@ void signal_handler(int sig)
         stop_program.store(true);
         stop_acquisition.store(true);
 
-        // Signal both child processes to exit
+        // Forward the signal to child processes to ensure they react
         if (pid1 > 0)
             kill(pid1, SIGINT);
         if (pid2 > 0)
             kill(pid2, SIGINT);
 
-        // Wake up all threads (in current process)
+        // Notify all threads in current process
         channel1.cond_write_csv.notify_all();
         channel1.cond_model.notify_all();
         channel1.cond_log_csv.notify_all();
         channel1.cond_log_dac.notify_all();
-
         channel2.cond_write_csv.notify_all();
         channel2.cond_model.notify_all();
         channel2.cond_log_csv.notify_all();
@@ -87,7 +88,6 @@ void signal_handler(int sig)
     }
 }
 
-// Print acquisition duration between two timestamps
 void print_duration(const std::string &label, uint64_t start_ns, uint64_t end_ns)
 {
     auto duration_ns = end_ns > start_ns ? end_ns - start_ns : 0;
@@ -101,7 +101,6 @@ void print_duration(const std::string &label, uint64_t start_ns, uint64_t end_ns
               << minutes << " min " << seconds << " sec " << ms << " ms\n";
 }
 
-// Print statistics collected from a channel's counters
 void print_channel_stats(const shared_counters_t *counters)
 {
     std::cout << "\n====================================\n\n";
@@ -111,39 +110,57 @@ void print_channel_stats(const shared_counters_t *counters)
 
     std::cout << std::left << std::setw(60) << "Total data acquired CH1:" << counters[0].acquire_count.load() << '\n';
     if (save_data_csv)
+    {
         std::cout << std::left << std::setw(60) << "Total lines written CH1 to csv:" << counters[0].write_count_csv.load() << '\n';
+    }
     if (save_data_dac)
+    {
         std::cout << std::left << std::setw(60) << "Total lines written CH1 to DAC_CH1:" << counters[0].write_count_dac.load() << '\n';
+    }
     std::cout << std::left << std::setw(60) << "Total model calculated CH1:" << counters[0].model_count.load() << '\n';
     if (save_output_csv)
+    {
         std::cout << std::left << std::setw(60) << "Total results logged CH1 to csv file:" << counters[0].log_count_csv.load() << '\n';
+    }
     if (save_output_dac)
+    {
         std::cout << std::left << std::setw(60) << "Total results written to DAC_CH1:" << counters[0].log_count_dac.load() << '\n';
+    }
 
     std::cout << std::left << std::setw(60) << "Total data acquired CH2:" << counters[1].acquire_count.load() << '\n';
     if (save_data_csv)
+    {
         std::cout << std::left << std::setw(60) << "Total lines written CH2 to csv:" << counters[1].write_count_csv.load() << '\n';
+    }
     if (save_data_dac)
-        std::cout << std::left << std::setw(60) << "Total lines written CH2 to DAC_CH2:" << counters[1].write_count_dac.load() << '\n';
+    {
+        std::cout << std::left << std::setw(60) << "Total lines written CH2 to DAC_CH1:" << counters[1].write_count_dac.load() << '\n';
+    }
     std::cout << std::left << std::setw(60) << "Total model calculated CH2:" << counters[1].model_count.load() << '\n';
     if (save_output_csv)
+    {
         std::cout << std::left << std::setw(60) << "Total results logged CH2 to csv file:" << counters[1].log_count_csv.load() << '\n';
+    }
     if (save_output_dac)
+    {
         std::cout << std::left << std::setw(60) << "Total results written to DAC_CH2:" << counters[1].log_count_dac.load() << '\n';
+    }
 
     std::cout << "\n====================================\n";
 }
 
-// Ensure directory exists or clear its content
+// Function to manage output folders containing .csv data
 void folder_manager(const std::string &folder_path)
 {
     namespace fs = std::filesystem;
-    fs::path dir_path(folder_path);
 
     try
     {
+        fs::path dir_path(folder_path);
+
         if (fs::exists(dir_path))
         {
+            // Folder exists - clear its contents
             for (const auto &entry : fs::directory_iterator(dir_path))
             {
                 try
@@ -152,12 +169,13 @@ void folder_manager(const std::string &folder_path)
                 }
                 catch (const fs::filesystem_error &e)
                 {
-                    std::cerr << "Failed to delete: " << entry.path() << " - " << e.what() << std::endl;
+                    std::cerr << "Failed to delete file: " << entry.path() << " - " << e.what() << std::endl;
                 }
             }
         }
         else
         {
+            // Folder doesn't exist - create it
             if (!fs::create_directories(dir_path))
             {
                 std::cerr << "Failed to create directory: " << folder_path << std::endl;
@@ -170,73 +188,78 @@ void folder_manager(const std::string &folder_path)
     }
 }
 
-// Prompt user to select logging/export preferences
 bool ask_user_preferences(bool &save_data_csv, bool &save_data_dac, bool &save_output_csv, bool &save_output_dac)
 {
-    const int max_attempts = 3;
+    int max_attempts = 3;
 
+    // Step 1: Ask if the user wants to save acquired data
     for (int attempt = 1; attempt <= max_attempts; ++attempt)
     {
-        int choice;
+        int save_choice;
         std::cout << "Do you want to save acquired data?\n"
                   << " 1. As CSV only\n"
                   << " 2. To DAC only\n"
                   << " 3. Both CSV and DAC\n"
                   << " 4. None\n"
                   << "Enter your choice (1-4): ";
-        std::cin >> choice;
+        std::cin >> save_choice;
 
-        if (choice >= 1 && choice <= 4)
+        if (save_choice >= 1 && save_choice <= 4)
         {
-            save_data_csv = (choice == 1 || choice == 3);
-            save_data_dac = (choice == 2 || choice == 3);
+            save_data_csv = (save_choice == 1 || save_choice == 3);
+            save_data_dac = (save_choice == 2 || save_choice == 3);
             break;
         }
-
-        std::cerr << "Invalid input. Please enter a number between 1 and 4.\n";
-        if (attempt == max_attempts)
-            return false;
+        else
+        {
+            std::cerr << "Invalid input. Please enter a number between 1 and 4.\n";
+            if (attempt == max_attempts)
+                return false;
+        }
     }
 
+    // Step 2: Ask what to do with model output
     for (int attempt = 1; attempt <= max_attempts; ++attempt)
     {
-        int choice;
+        int output_option;
         std::cout << "\nChoose what to do with model output:\n"
                   << " 1. Save as CSV only\n"
                   << " 2. Output to DAC only\n"
                   << " 3. Both CSV and DAC\n"
                   << " 4. None\n"
                   << "Enter your choice (1-4): ";
-        std::cin >> choice;
+        std::cin >> output_option;
 
-        if (choice >= 1 && choice <= 4)
+        if (output_option >= 1 && output_option <= 4)
         {
-            save_output_csv = (choice == 1 || choice == 3);
+            save_output_csv = (output_option == 1 || output_option == 3);
 
-            // Prevent DAC conflict between raw data and model output
-            if (save_data_dac && (choice == 2 || choice == 3))
+            // Check for DAC conflict
+            if (save_data_dac && (output_option == 2 || output_option == 3))
             {
                 save_output_dac = false;
-                std::cerr << "\n[Warning] DAC is already used for raw data.\n"
+                std::cerr << "\n[Warning] DAC is already used for saving raw data.\n"
                           << "Model output will NOT be sent to DAC.\n";
             }
             else
             {
-                save_output_dac = (choice == 2 || choice == 3);
+                save_output_dac = (output_option == 2 || output_option == 3);
             }
 
             return true;
         }
-
-        std::cerr << "Invalid input. Please enter a number between 1 and 4.\n";
-        if (attempt == max_attempts)
-            return false;
+        else
+        {
+            std::cerr << "Invalid input. Please enter a number between 1 and 4.\n";
+            if (attempt == max_attempts)
+                return false;
+        }
     }
 
     return true;
 }
 
-// Barrier synchronization for processes or threads
+
 void wait_for_barrier(std::atomic<int> &barrier, int total_participants)
 {
     barrier.fetch_add(1);

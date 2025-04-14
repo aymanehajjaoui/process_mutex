@@ -2,8 +2,8 @@
 
 #pragma once
 
-#include "Common.hpp"   // Includes Channel, model result buffer, etc.
-#include "DAC.hpp"      // Includes DAC output utilities
+#include "Common.hpp"
+#include "DAC.hpp"
 
-// Outputs CNN inference results to DAC for the given channel
+// Outputs CNN processing results to DAC
 void log_results_dac(Channel &channel, rp_channel_t rp_channel);
