@@ -2,14 +2,15 @@
 
 #include "ModelProcessing.hpp"
 #include <iostream>
-#include <thread>
 #include <chrono>
 #include <type_traits>
 
+// CMSIS-NN and ARM DSP optimizations enabled
 #define WITH_CMSIS_NN 1
 #define ARM_MATH_DSP 1
 #define ARM_NN_TRUNCATE
 
+// Normalize input data per sample (Min-Max Scaling)
 template <typename T>
 void sample_norm(T (&data)[MODEL_INPUT_DIM_0][MODEL_INPUT_DIM_1])
 {
@@ -20,15 +21,12 @@ void sample_norm(T (&data)[MODEL_INPUT_DIM_0][MODEL_INPUT_DIM_1])
 
     for (size_t i = 1; i < MODEL_INPUT_DIM_0; ++i)
     {
-        if (data[i][0] < min_val)
-            min_val = data[i][0];
-        if (data[i][0] > max_val)
-            max_val = data[i][0];
+        if (data[i][0] < min_val) min_val = data[i][0];
+        if (data[i][0] > max_val) max_val = data[i][0];
     }
 
     base_t range = max_val - min_val;
-    if (range == 0)
-        range = 1;
+    if (range == 0) range = 1;
 
     for (size_t i = 0; i < MODEL_INPUT_DIM_0; ++i)
     {
@@ -43,6 +41,7 @@ void sample_norm(T (&data)[MODEL_INPUT_DIM_0][MODEL_INPUT_DIM_1])
     }
 }
 
+// Standard model inference without normalization
 void model_inference(Channel &channel)
 {
     try
@@ -50,27 +49,29 @@ void model_inference(Channel &channel)
         while (true)
         {
             std::shared_ptr<data_part_t> part;
+
+            // Wait for data or termination
             {
                 std::unique_lock<std::mutex> lock(channel.mtx);
-                channel.cond_model.wait(lock, [&]
-                                        { return !channel.model_queue.empty() || channel.acquisition_done || stop_program.load(); });
+                channel.cond_model.wait(lock, [&] {
+                    return !channel.model_queue.empty() || channel.acquisition_done || stop_program.load();
+                });
 
-                if (stop_program.load() && channel.acquisition_done && channel.model_queue.empty())
-                    break;
-
-                if (channel.model_queue.empty())
-                    continue;
+                if (stop_program.load() && channel.acquisition_done && channel.model_queue.empty()) break;
+                if (channel.model_queue.empty()) continue;
 
                 part = channel.model_queue.front();
                 channel.model_queue.pop();
             }
 
+            // Run inference
             model_result_t result;
             auto start = std::chrono::high_resolution_clock::now();
             cnn(part->data, result.output);
             auto end = std::chrono::high_resolution_clock::now();
             result.computation_time = std::chrono::duration<double, std::milli>(end - start).count();
 
+            // Save results
             {
                 std::lock_guard<std::mutex> lock(channel.mtx);
                 if (save_output_csv)
@@ -87,17 +88,12 @@ void model_inference(Channel &channel)
             }
         }
 
+        // Signal end of processing
         {
             std::lock_guard<std::mutex> lock(channel.mtx);
             channel.processing_done = true;
-            if (save_output_csv)
-            {
-                channel.cond_log_csv.notify_all();
-            }
-            if (save_output_dac)
-            {
-                channel.cond_log_dac.notify_all();
-            }
+            if (save_output_csv) channel.cond_log_csv.notify_all();
+            if (save_output_dac) channel.cond_log_dac.notify_all();
         }
 
         std::cout << "Model inference thread on channel " << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
@@ -108,6 +104,7 @@ void model_inference(Channel &channel)
     }
 }
 
+// Inference with normalization
 void model_inference_mod(Channel &channel)
 {
     try
@@ -115,29 +112,32 @@ void model_inference_mod(Channel &channel)
         while (true)
         {
             std::shared_ptr<data_part_t> part;
+
+            // Wait for data or termination
             {
                 std::unique_lock<std::mutex> lock(channel.mtx);
-                channel.cond_model.wait(lock, [&]
-                                        { return !channel.model_queue.empty() || channel.acquisition_done || stop_program.load(); });
+                channel.cond_model.wait(lock, [&] {
+                    return !channel.model_queue.empty() || channel.acquisition_done || stop_program.load();
+                });
 
-                if (stop_program.load() && channel.acquisition_done && channel.model_queue.empty())
-                    break;
-
-                if (channel.model_queue.empty())
-                    continue;
+                if (stop_program.load() && channel.acquisition_done && channel.model_queue.empty()) break;
+                if (channel.model_queue.empty()) continue;
 
                 part = channel.model_queue.front();
                 channel.model_queue.pop();
             }
 
+            // Normalize data before inference
             sample_norm(part->data);
 
+            // Run inference
             model_result_t result;
             auto start = std::chrono::high_resolution_clock::now();
             cnn(part->data, result.output);
             auto end = std::chrono::high_resolution_clock::now();
             result.computation_time = std::chrono::duration<double, std::milli>(end - start).count();
 
+            // Save results
             {
                 std::lock_guard<std::mutex> lock(channel.mtx);
                 if (save_output_csv)
@@ -154,17 +154,12 @@ void model_inference_mod(Channel &channel)
             }
         }
 
+        // Signal end of processing
         {
             std::lock_guard<std::mutex> lock(channel.mtx);
             channel.processing_done = true;
-            if (save_output_csv)
-            {
-                channel.cond_log_csv.notify_all();
-            }
-            if (save_output_dac)
-            {
-                channel.cond_log_dac.notify_all();
-            }
+            if (save_output_csv) channel.cond_log_csv.notify_all();
+            if (save_output_dac) channel.cond_log_dac.notify_all();
         }
 
         std::cout << "Model inference mod thread on channel " << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;

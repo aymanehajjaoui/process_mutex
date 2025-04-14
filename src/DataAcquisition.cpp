@@ -6,12 +6,14 @@
 #include <thread>
 #include <chrono>
 
+// Main acquisition loop per channel
 void acquire_data(Channel &channel, rp_channel_t rp_channel)
 {
     try
     {
         std::cout << "Waiting for trigger on channel " << rp_channel + 1 << "..." << std::endl;
 
+        // Wait for the trigger event
         while (!channel.channel_triggered && !stop_acquisition.load())
         {
             if (rp_AcqGetTriggerStateCh(rp_channel, &channel.state) != RP_OK)
@@ -32,6 +34,7 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
             }
         }
 
+        // If acquisition stopped before triggering
         if (!channel.channel_triggered)
         {
             std::cerr << "INFO: Acquisition stopped before trigger detected on channel " << rp_channel + 1 << "." << std::endl;
@@ -55,6 +58,7 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
 
         while (!stop_acquisition.load())
         {
+            // Check disk space
             if (is_disk_space_below_threshold("/", DISK_SPACE_THRESHOLD))
             {
                 std::cerr << "ERR: Disk space below threshold. Stopping acquisition." << std::endl;
@@ -75,12 +79,15 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
 
                 if (distance >= DATA_SIZE)
                 {
-                    std::cerr << "ERR: Overrun detected on channel " << rp_channel + 1 << " at: " << channel.counters->acquire_count.load() << std::endl;
+                    std::cerr << "ERR: Overrun detected on channel " << rp_channel + 1
+                              << " at: " << channel.counters->acquire_count.load() << std::endl;
 
                     {
                         std::lock_guard<std::mutex> lock(channel.mtx);
                         stop_acquisition.store(true);
                     }
+
+                    // Notify waiting threads
                     channel.cond_write_csv.notify_all();
                     channel.cond_model.notify_all();
                     return;
@@ -102,8 +109,10 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
                     if (pos >= DATA_SIZE)
                         pos -= DATA_SIZE;
 
+                    // Push to queues under mutex
                     {
                         std::lock_guard<std::mutex> lock(channel.mtx);
+
                         if (save_data_csv)
                         {
                             channel.data_queue_csv.push(part);
@@ -115,6 +124,7 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
                             channel.data_queue_dac.push(part);
                             channel.cond_write_dac.notify_all();
                         }
+
                         channel.model_queue.push(part);
                         channel.cond_model.notify_all();
                     }
@@ -124,30 +134,30 @@ void acquire_data(Channel &channel, rp_channel_t rp_channel)
             }
         }
 
+        // Mark end time
         channel.end_time_point = std::chrono::steady_clock::now();
         channel.counters->end_time_ns.store(
             std::chrono::duration_cast<std::chrono::nanoseconds>(
                 channel.end_time_point.time_since_epoch())
                 .count());
 
+        // Final state update and notify any waiting threads
         {
             std::lock_guard<std::mutex> lock(channel.mtx);
             channel.acquisition_done = true;
+
             if (save_data_csv)
-            {
                 channel.cond_write_csv.notify_all();
-            }
 
             if (save_data_dac)
-            {
                 channel.cond_write_dac.notify_all();
-            }
         }
 
         std::cout << "Acquisition thread on channel " << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Exception in acquire_data for channel " << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
+        std::cerr << "Exception in acquire_data for channel "
+                  << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
     }
 }

@@ -2,11 +2,11 @@
 
 #include "DataWriterDAC.hpp"
 #include <iostream>
-#include <fstream>
 #include <thread>
 #include <chrono>
 #include <type_traits>
 
+// DAC writer function: Sends normalized data to DAC output
 void write_data_dac(Channel &channel, rp_channel_t rp_channel)
 {
     try
@@ -14,11 +14,14 @@ void write_data_dac(Channel &channel, rp_channel_t rp_channel)
         while (true)
         {
             std::shared_ptr<data_part_t> part;
+
+            // Wait until there is data or shutdown signal
             {
                 std::unique_lock<std::mutex> lock(channel.mtx);
                 channel.cond_write_dac.wait(lock, [&]
                                             { return !channel.data_queue_dac.empty() || channel.acquisition_done || stop_program.load(); });
 
+                // Exit condition: program stopped, acquisition done, and queue empty
                 if (stop_program.load() && channel.acquisition_done && channel.data_queue_dac.empty())
                     break;
 
@@ -33,21 +36,23 @@ void write_data_dac(Channel &channel, rp_channel_t rp_channel)
                 }
             }
 
+            // Send each sample to DAC
             for (size_t k = 0; k < MODEL_INPUT_DIM_0; k++)
             {
                 float voltage = OutputToVoltage(part->data[k][0]);
-
-                voltage = std::clamp(voltage, -1.0f, 1.0f);
-
+                voltage = std::clamp(voltage, -1.0f, 1.0f); // Ensure signal is within bounds
                 rp_GenAmp(rp_channel, voltage);
             }
 
             channel.counters->write_count_dac.fetch_add(1, std::memory_order_relaxed);
         }
-        std::cout << "Data writing on DAC thread on channel " << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
+
+        std::cout << "Data writing on DAC thread on channel "
+                  << static_cast<int>(channel.channel_id) + 1 << " exiting..." << std::endl;
     }
     catch (const std::exception &e)
     {
-        std::cerr << "Exception in write_data_dac for channel " << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
+        std::cerr << "Exception in write_data_dac for channel "
+                  << static_cast<int>(channel.channel_id) + 1 << ": " << e.what() << std::endl;
     }
 }

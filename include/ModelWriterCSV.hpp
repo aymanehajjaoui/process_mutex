@@ -2,7 +2,7 @@
 
 #pragma once
 
-#include "Common.hpp"
+#include "Common.hpp"  // Includes Channel struct, model result buffer, etc.
 
-// Logs CNN processing results to a file
+// Logs CNN inference results to a CSV file for the given channel
 void log_results_csv(Channel &channel, const std::string &filename);
