@@ -2,7 +2,6 @@
 
 #include "ModelProcessing.hpp"
 #include <iostream>
-#include <thread>
 #include <chrono>
 #include <type_traits>
 

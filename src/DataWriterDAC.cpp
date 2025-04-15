@@ -1,11 +1,7 @@
-/* DataWriter.cpp */
+/* DataWriterDAC.cpp */
 
 #include "DataWriterDAC.hpp"
 #include <iostream>
-#include <fstream>
-#include <thread>
-#include <chrono>
-#include <type_traits>
 
 void write_data_dac(Channel &channel, rp_channel_t rp_channel)
 {

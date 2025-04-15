@@ -2,7 +2,6 @@
 
 #include "Common.hpp"
 
-// Global channel instances
 Channel channel1;
 Channel channel2;
 

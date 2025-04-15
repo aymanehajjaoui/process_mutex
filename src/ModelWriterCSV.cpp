@@ -1,11 +1,8 @@
-/*modelWriter.cpp*/
+/*ModelWriterCSV.cpp*/
 
 #include "ModelWriterCSV.hpp"
 #include "DAC.hpp"
 #include <iostream>
-#include <fstream>
-#include <thread>
-#include <chrono>
 #include <type_traits>
 
 // Generic output writer for model result

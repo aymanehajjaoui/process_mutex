@@ -1,11 +1,7 @@
-/*modelWriterDAC.cpp*/
+/*ModelWriterDAC.cpp*/
 
 #include "ModelWriterDAC.hpp"
 #include <iostream>
-#include <fstream>
-#include <thread>
-#include <chrono>
-#include <type_traits>
 
 void log_results_dac(Channel &channel, rp_channel_t rp_channel)
 {

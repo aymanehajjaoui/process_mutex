@@ -1,10 +1,6 @@
 /*DAC.cpp*/
 
 #include "DAC.hpp"
-#include "rp.h"
-#include <cmath>
-#include <iostream>
-#include <type_traits>
 
 void initialize_DAC()
 {
@@ -16,4 +12,3 @@ void initialize_DAC()
     rp_GenTriggerOnly(RP_CH_1);
     rp_GenTriggerOnly(RP_CH_2);
 }
-

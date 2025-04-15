@@ -3,8 +3,6 @@
 #include "DataAcquisition.hpp"
 #include "SystemUtils.hpp"
 #include <iostream>
-#include <thread>
-#include <chrono>
 
 void acquire_data(Channel &channel, rp_channel_t rp_channel)
 {

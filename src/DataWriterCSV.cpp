@@ -1,10 +1,7 @@
-/* DataWriter.cpp */
+/* DataWriterCSV.cpp */
 
 #include "DataWriterCSV.hpp"
 #include <iostream>
-#include <fstream>
-#include <thread>
-#include <chrono>
 #include <type_traits>
 
 template <typename T>
@@ -42,9 +39,7 @@ void write_data_csv(Channel &channel, const std::string &filename)
             {
                 std::unique_lock<std::mutex> lock(channel.mtx);
                 channel.cond_write_csv.wait(lock, [&]
-                {
-                    return !channel.data_queue_csv.empty() || channel.acquisition_done || stop_program.load();
-                });
+                                            { return !channel.data_queue_csv.empty() || channel.acquisition_done || stop_program.load(); });
 
                 if (stop_program.load() && channel.acquisition_done && channel.data_queue_csv.empty())
                     break;

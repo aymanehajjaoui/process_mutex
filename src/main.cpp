@@ -1,7 +1,6 @@
 /* main.cpp */
 
 #include <iostream>
-#include <fstream>
 #include <thread>
 #include <atomic>
 #include <mutex>
@@ -11,14 +10,11 @@
 #include <csignal>
 #include <chrono>
 #include <sched.h>
-#include <string.h>
 #include <sys/statvfs.h>
 #include <sys/mman.h>
 #include <fcntl.h>
 #include <unistd.h>
-#include <cmath>
 #include <sys/wait.h>
-#include <sys/stat.h>
 #include <sys/types.h>
 #include <iomanip>
 #include "rp.h"
